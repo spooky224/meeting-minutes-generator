@@ -1,0 +1,43 @@
+Weekly Product Team Standup — June 10, 2025
+
+Attendees: Sarah (Product Lead), Marcus (Engineering), Priya (Design), Tom (QA), Linda (Marketing)
+
+Sarah: Good morning everyone. Let's get started. Marcus, can you give us the engineering update first?
+
+Marcus: Sure. We finished the user authentication refactor on Friday. It's been merged into main. The PR got reviewed by Tom's team and all tests pass. We're planning to deploy to staging today.
+
+Tom: That's right. We ran the full regression suite and everything looks good. No blockers from QA.
+
+Sarah: Excellent. So the decision is we deploy authentication to staging today, and if there are no issues by Wednesday we push to production. Marcus, can you own the staging deployment?
+
+Marcus: Absolutely. I'll do it this afternoon by 3 PM.
+
+Sarah: Great. Priya, what's the status on the new dashboard designs?
+
+Priya: I've completed the wireframes for the analytics dashboard. I'm sharing them in Figma now. I need feedback from the team by end of this week so I can move to high-fidelity mockups.
+
+Sarah: I'll review the wireframes by Thursday. Tom, can you have QA look at the designs from a usability perspective too?
+
+Tom: Yes, I'll coordinate with the team and send feedback by Friday afternoon.
+
+Sarah: Perfect. One more thing — Linda, the marketing campaign for the new release?
+
+Linda: We're on track. The blog post is drafted and the email sequence is ready. However, we need final confirmation on the release date before we can schedule anything. We're aiming for June 25th but that depends on engineering.
+
+Sarah: Marcus, is June 25th realistic for the production release?
+
+Marcus: Given the current pace, yes. But only if there are no critical bugs found in staging. I'd say 85% confident.
+
+Sarah: Let's tentatively commit to June 25th. Linda, you can start scheduling the campaign but keep a 48-hour buffer in case we need to shift.
+
+Linda: Understood. I'll keep the campaign drafts ready and schedule them conditionally.
+
+Sarah: Alright. To summarise decisions: staging deployment today, production target June 25th, Priya's wireframes reviewed by Thursday, QA feedback on designs by Friday. Any final points?
+
+Tom: One thing — we should schedule a proper release retrospective after the June 25th deployment. Maybe June 27th?
+
+Sarah: Good idea. Let's block June 27th at 2 PM for the post-release retrospective. Tom, can you send the calendar invite?
+
+Tom: Will do.
+
+Sarah: Thanks everyone. Meeting adjourned.

@@ -1,0 +1,35 @@
+00:00:04.800 --> 00:00:09.200
+<v Karim>Alright, thanks everyone for joining. Let’s get started.
+
+00:00:09.500 --> 00:00:14.000
+<v Client>Yes, thanks Karim. We’ve been reviewing our current systems internally.
+
+00:00:14.300 --> 00:00:19.000
+<v Karim>Great. From what we understood, your main issue is around performance and scalability.
+
+00:00:19.200 --> 00:00:24.800
+<v Client>Exactly. Especially on peak hours, we are seeing delays on transactions.
+
+00:00:25.100 --> 00:00:31.000
+<v Karim>That makes sense. Your current architecture looks quite monolithic from what you shared.
+
+00:00:31.500 --> 00:00:36.000
+<v Client>Yes, it’s something we’ve been wanting to move away from for a while now.
+
+00:00:36.200 --> 00:00:42.500
+<v Karim>We usually handle this by introducing microservices gradually, not a full rewrite.
+
+00:00:43.000 --> 00:00:48.000
+<v Client>Okay, and how does that impact timelines? We’re under some pressure internally.
+
+00:00:48.500 --> 00:00:55.000
+<v Karim>For a first phase, we’re looking at around 10 to 12 weeks, depending on priorities.
+
+00:00:55.200 --> 00:01:00.000
+<v Client>Alright. And in terms of security, especially for payments?
+
+00:01:00.200 --> 00:01:06.000
+<v Karim>We’ll integrate standard authentication layers and comply with banking requirements.
+
+00:01:06.200 --> 00:01:10.500
+<v Client>Sounds good. Let’s move forward with a more detailed proposal.
