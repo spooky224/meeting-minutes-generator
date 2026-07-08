@@ -1,0 +1,8 @@
+.\.venv\Scripts\Activate
+
+ python main.py data/earning_call.txt
+ 
+
+ New-Alias python "C:\Users\User\AppData\Local\Programs\Python\Python312\python.exe"
+
+ streamlit run app.py

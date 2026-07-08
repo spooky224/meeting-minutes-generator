@@ -7,9 +7,12 @@ from src.splitter import split_transcript
 def _invoke_with_retry(agent, message: str, delay: float = 3.0, retries: int = 3) -> dict:
     for attempt in range(retries):
         try:
-            return agent.invoke({
+            print(f"🛰️ Invoking agent with message (len={len(message)}):\n{message[:300]}...\n")
+            response =  agent.invoke({
                 "messages": [{"role": "user", "content": message}]
             })
+            print(f"🔍 Raw agent response:\n{response}\n")
+            return response
         except Exception as e:
             err = str(e)
             is_rate = "429" in err or "rate_limit" in err or "Too Many Requests" in err
@@ -50,6 +53,11 @@ def run_map(text: str, map_agent, delay_between_chunks: float = 2.0) -> List[Mee
                 "Please extract structured meeting minutes from this segment."
             )
             # Doc pattern: result["structured_response"]
+            print(f"🔑 Response keys: {list(result.keys())}")
+            if "structured_response" not in result:
+                print(f"⚠️ Missing structured_response, raw output:\n{result}")
+                raise RuntimeError("structured_response missing")
+
             minutes: MeetingMinutes = result["structured_response"]
             results.append(minutes)
             print(f"      ✅  {len(minutes.decisions)} decisions, "
@@ -94,6 +102,7 @@ def run_reduce(chunk_results: List[MeetingMinutes], reduce_agent) -> MeetingMinu
         reduce_agent,
         f"Merge these meeting segment summaries into one final structured output:\n\n{combined}",
     )
+    
     # Doc pattern: result["structured_response"]
     return result["structured_response"]
 
@@ -101,7 +110,7 @@ def run_reduce(chunk_results: List[MeetingMinutes], reduce_agent) -> MeetingMinu
 # ── Full pipeline ─────────────────────────────────────────────────────────────
 
 def run_pipeline(text: str, map_agent, reduce_agent) -> MeetingMinutes:
-
+    
     print("\n── MAP phase ─────────────────────────────────────────────")
     chunk_results = run_map(text, map_agent)
 
@@ -119,3 +128,36 @@ def run_pipeline(text: str, map_agent, reduce_agent) -> MeetingMinutes:
     print("   ✅ Reduce complete")
 
     return final
+
+
+# ── Background artifact job (new) ──────────────────────────────────────────────
+#
+# This is the single entry point the Streamlit app hands off to a background
+# thread right after a file is uploaded. It never touches st.session_state —
+# it only talks to Mongo (via src.db) and the shared FAISS index (via
+# src.rag), which is exactly what makes it safe to run off the main thread.
+#
+# Flow: run the existing map/reduce pipeline → embed the transcript into the
+# shared FAISS index → persist both results to the artifact's Mongo document.
+# On any failure, the artifact is marked "failed" with the error message
+# instead of raising, since nothing on the main thread is waiting on this
+# call directly — the UI discovers success/failure by polling artifact status.
+
+def run_artifact_pipeline(artifact_id: str, file_name: str, transcript: str) -> None:
+    from src import db
+    from src.rag import embed_artifact
+    from src.agents import create_map_agent, create_reduce_agent
+
+    try:
+        map_agent = create_map_agent()
+        reduce_agent = create_reduce_agent()
+        minutes = run_pipeline(transcript, map_agent, reduce_agent)
+
+        chunk_ids = embed_artifact(artifact_id, file_name, transcript)
+
+        db.save_artifact_result(artifact_id, minutes, chunk_ids)
+        print(f"✅ Artifact {artifact_id} ({file_name}) ready — {len(chunk_ids)} chunks embedded.")
+
+    except Exception as e:
+        print(f"❌ Artifact {artifact_id} ({file_name}) failed: {e}")
+        db.mark_artifact_failed(artifact_id, str(e))

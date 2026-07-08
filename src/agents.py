@@ -5,23 +5,19 @@ from langgraph.checkpoint.memory import InMemorySaver
 import os
 from langchain_groq import ChatGroq
 from src.schema import MeetingMinutes
+from src.model_pool import ModelPool
 
 
 
-def init_chat_model():
-    try:
-        return ChatGroq(
-            model="llama-3.3-70b-versatile",
-            api_key=os.getenv("GROQ_API_KEY_MAIN")
-        )
-    except Exception as e1:
-        print("⚠️ Primary model failed, trying fallback:", e1)
-        return ChatGroq(
-            model="llama-3.1-8b",
-            api_key=os.getenv("GROQ_API_KEY_FALLBACK")
-        )
+MODEL_POOL = ModelPool()
+MODEL = MODEL_POOL.model
+#MODEL = ChatGroq(
+#            model="llama-3.3-70b-versatile",
+#            api_key=os.getenv("MY_KEY")
+#        )
 
-MODEL = init_chat_model()
+print(f"🛠️ Map agent using model: {MODEL.model}")
+
 
 
 @tool
@@ -59,23 +55,24 @@ def search_meeting_content(query: str, transcript: str) -> str:
 
 
 def create_map_agent():
+    print(f"🛠️ Map agent using model: {MODEL.model}")
     return create_agent(
         model=MODEL,
         tools=[analyze_transcript_chunk],   # ← tools doc @tool pattern
         system_prompt="""
-You are a professional meeting analyst. You will receive a segment of a meeting transcript.
+        You are a professional meeting analyst. You will receive a segment of a meeting transcript.
 
-Steps:
-1. Call analyze_transcript_chunk with the transcript text you receive.
-2. Based on the analysis, produce structured meeting minutes with:
-   - summary: one concise paragraph covering what was discussed
-   - decisions: list of key decisions (no duplicates, meaningful only)
-   - action_items: list of tasks with owner, task description, and deadline
-   - sentiment: overall tone (positive / neutral / negative)
+        Steps:
+        1. Call analyze_transcript_chunk with the transcript text you receive.
+        2. Based on the analysis, produce structured meeting minutes with:
+        - summary: one concise paragraph covering what was discussed
+        - decisions: list of key decisions (no duplicates, meaningful only)
+        - action_items: list of tasks with owner, task description, and deadline
+        - sentiment: overall tone (positive / neutral / negative)
 
-Only include information explicitly stated in the transcript.
-Write "not specified" for missing deadlines or owners.
-""",
+        Only include information explicitly stated in the transcript.
+        Write "not specified" for missing deadlines or owners.
+        """,
         response_format=MeetingMinutes,     # ← structured-output doc pattern
         middleware=[
             ModelRetryMiddleware(max_retries=3),   # ← middleware doc pattern
@@ -85,7 +82,7 @@ Write "not specified" for missing deadlines or owners.
 
 
 def create_reduce_agent():
-
+    print(f"🛠️ Reduce agent using model: {MODEL.model}")
     return create_agent(
         model=MODEL,
         tools=[],                           # ← pure reasoning, no tools needed
@@ -114,6 +111,7 @@ Rules:
 
 
 def create_qa_agent():
+    print(f"🛠️ QA agent using model: {MODEL.model}")
     """
     QA agent that consumes refined context (semantic + keyword search done outside).
     It no longer defines its own search tool, avoiding duplicate keyword calls.
