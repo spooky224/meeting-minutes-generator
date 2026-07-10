@@ -29,6 +29,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
 
+
 from pymongo import MongoClient, DESCENDING
 from pymongo.collection import Collection
 
@@ -246,3 +247,4 @@ def delete_conversation(conversation_id: str) -> None:
     """Permanently delete a conversation. This is the ONLY way conversations
     are ever removed — nothing else (including artifact deletion) cascades here."""
     _conversations_col().delete_one({"_id": conversation_id})
+

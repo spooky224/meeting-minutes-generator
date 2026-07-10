@@ -1,35 +1,10 @@
-"""
-app.py — Streamlit UI for the Meeting Minutes Generator
-========================================================
-Run: streamlit run app.py
-
-Architecture (v2):
-  - Uploading a file immediately kicks off a BACKGROUND THREAD that runs the
-    map/reduce pipeline and embeds the transcript into a shared, persistent
-    FAISS index. No "Generate minutes" button — it's automatic.
-  - While it's your first time seeing an artifact's result, a modal (st.dialog)
-    pops up with its summary/decisions/action items as proof it processed
-    successfully. Close it, and you're back in the chat.
-  - Every uploaded file becomes a permanent "Artifact" in the sidebar. Click
-    one anytime to reopen its (already-generated, never regenerated) minutes.
-    Deleting an artifact removes its Mongo record and its FAISS vectors —
-    nothing else.
-  - The main page is just the chat, full width. Conversations belong to the
-    user (a static default user for now, real auth later), NOT to any single
-    file — deleting an artifact never touches a conversation. The only way a
-    conversation goes away is its own delete (✕) button.
-  - Chat can search across every uploaded file at once, or be scoped to one
-    specific file via the "Ask about" selector.
-
-Requires Streamlit >= 1.37 for st.dialog.
-"""
-
 import streamlit as st
 from dotenv import load_dotenv
 import threading
 import tempfile
 import time
 import os
+from src.auth import _users_col, create_user, find_user_by_email, verify_user, issue_jwt, decode_jwt, find_user_by_id, is_valid_email
 
 load_dotenv()
 
@@ -41,8 +16,22 @@ from src.rag      import query_faiss, delete_artifact_vectors, rebuild_index_fro
 from src import db
 from src.db       import DEFAULT_USER_ID
 
+from streamlit_oauth import OAuth2Component
+import os
+import jwt        # PyJWT library
+import uuid       # Python’s built-in UUID module
 
 # ── Page config ───────────────────────────────────────────────────────────────
+
+client_id = os.getenv("GOOGLE_CLIENT_ID")
+client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
+token_url = "https://oauth2.googleapis.com/token"
+redirect_uri = "http://localhost:8501"  # adjust if deployed
+
+oauth2 = OAuth2Component(client_id, client_secret, authorize_url, token_url, redirect_uri)
+
 
 st.set_page_config(
     page_title="Meeting Minutes",
@@ -103,6 +92,7 @@ def init_state():
     defaults = {
         "qa_agent":                 None,   # created once, reused across the whole session
         "active_conv_id":           None,
+        "jwt_token": None,
         "active_messages":          [],
         "thread_config":            {"configurable": {"thread_id": "default"}},
         "pending_modal_artifact_id": None,  # artifact whose minutes modal should be shown
@@ -116,6 +106,126 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
+
+user_id = decode_jwt(st.session_state.get("jwt_token"))
+user = None
+if user_id:
+    user = find_user_by_id(user_id)
+
+
+if user_id is None:
+    st.markdown("""
+    <style>
+    .auth-title {
+        font-size: 3rem;
+        font-weight: 600;
+        color: #5eead4;
+        margin-bottom: 0.5rem;
+    }
+    .separator {
+        border-left: 2px solid #1e2535;
+        height: 220px;
+        margin: auto;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Header row: logo | separator | title
+    col1, col_sep, col2 = st.columns([2, 0.1, 3])
+    with col1:
+        st.image("proxym.png", width=700)
+    with col_sep:
+        st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
+    with col2:
+        st.markdown("<div class='auth-title'>Welcome to the Meeting Minutes Generator AI Chatbot</div>", unsafe_allow_html=True)
+
+    # Forms stacked underneath
+    tab_login, tab_signup = st.tabs(["Login", "Sign up"])
+
+    # ── Login ────────────────────────────────────────────────────────────────
+    with tab_login:
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Password", type="password", key="login_password")
+        if st.button("Login", use_container_width=True):
+            uid = verify_user(email, password)
+            if uid:
+                st.session_state.jwt_token = issue_jwt(uid)
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
+
+        # Google login button
+        st.markdown("---")
+        result = oauth2.authorize_button("Login with Google", redirect_uri, "openid email profile")
+
+
+
+        if result:
+            id_token = result.get("id_token")
+            user_info = jwt.decode(id_token, options={"verify_signature": False})
+            email = user_info.get("email")
+            name = user_info.get("name")
+
+            existing = find_user_by_email(email)
+            if existing:
+                uid = existing["_id"]
+            else:
+                uid = create_user(name, email, uuid.uuid4().hex)  # random password
+            st.session_state.jwt_token = issue_jwt(uid)
+            st.rerun()
+
+
+    # ── Signup ───────────────────────────────────────────────────────────────
+    with tab_signup:
+        username = st.text_input("Username", key="signup_username")
+        if username:
+            if _users_col().find_one({"username": username}):
+                st.error("Username already taken")
+            else:
+                st.success("Username available ✅")
+
+        email = st.text_input("Email", key="signup_email")
+        if email:
+            if not is_valid_email(email):
+                st.error("Invalid email format")
+            elif find_user_by_email(email):
+                st.error("Email already taken")
+            else:
+                st.success("Email available ✅")
+
+        password = st.text_input("Password", type="password", key="signup_password")
+        if password:
+            st.markdown("**Password requirements:**")
+            st.markdown(f"- {'✅' if len(password) >= 8 else '❌'} At least 8 characters")
+            st.markdown(f"- {'✅' if any(c.isupper() for c in password) else '❌'} One uppercase letter")
+            st.markdown(f"- {'✅' if any(c.islower() for c in password) else '❌'} One lowercase letter")
+            st.markdown(f"- {'✅' if any(c.isdigit() for c in password) else '❌'} One number")
+            st.markdown(f"- {'✅' if any(c in '!@#$%^&*' for c in password) else '❌'} One special character (!@#$%^&*)")
+
+        can_signup = (
+            username and email and password
+            and is_valid_email(email)
+            and not find_user_by_email(email)
+            and not _users_col().find_one({"username": username})
+            and len(password) >= 8
+            and any(c.isupper() for c in password)
+            and any(c.islower() for c in password)
+            and any(c.isdigit() for c in password)
+            and any(c in "!@#$%^&*" for c in password)
+        )
+
+        if st.button("Sign up", use_container_width=True, disabled=not can_signup):
+            uid = create_user(username, email, password)
+            st.session_state.jwt_token = issue_jwt(uid)
+            st.rerun()
+
+    st.stop()
+
+
+
+
+
+
 
 if st.session_state.qa_agent is None:
     st.session_state.qa_agent = create_qa_agent()
@@ -165,7 +275,8 @@ def delete_artifact_cascade(artifact_id: str) -> None:
         # whatever artifacts are left.
         remaining = [
             db.get_artifact(a["_id"])
-            for a in db.list_artifacts(DEFAULT_USER_ID)
+            
+            for a in db.list_artifacts(user_id)
             if a["status"] == "ready"
         ]
         rebuild_index_from_artifacts([r for r in remaining if r is not None])
@@ -227,6 +338,25 @@ def show_minutes_modal(artifact: dict) -> None:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
+    if user:
+
+        st.markdown("### 👤 Account")
+
+        st.write(f"**{user['username']}**")
+        st.caption(user["email"])
+
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state.jwt_token = None
+
+            # Optional cleanup
+            st.session_state.active_conv_id = None
+            st.session_state.active_messages = []
+            st.session_state.qa_agent = None
+
+            st.rerun()
+
+        st.markdown("---")
+
     st.markdown("### 📋 Meeting Minutes")
     st.markdown("<p style='color:#475569;font-size:0.8rem'>Upload a transcript — it's processed automatically.</p>", unsafe_allow_html=True)
     st.markdown("---")
@@ -258,7 +388,7 @@ with st.sidebar:
                 os.unlink(tmp_path)
 
             if text:
-                artifact_id = db.create_artifact(uploaded.name, text, DEFAULT_USER_ID)
+                artifact_id = db.create_artifact(uploaded.name, text, user_id)
                 threading.Thread(
                     target=run_artifact_pipeline,
                     args=(artifact_id, uploaded.name, text),
@@ -272,7 +402,7 @@ with st.sidebar:
 
     # ── New chat ────────────────────────────────────────────────────────────
     if st.button("＋ New chat", use_container_width=True):
-        cid = db.create_conversation(DEFAULT_USER_ID)
+        cid = db.create_conversation(user_id)
         switch_to_conversation(cid)
         st.rerun()
 
@@ -280,7 +410,7 @@ with st.sidebar:
     st.markdown("<div class='section-label' style='margin-top:1rem'>Conversations</div>", unsafe_allow_html=True)
 
     try:
-        convs = db.list_conversations(DEFAULT_USER_ID)
+        convs = db.list_conversations(user_id)
     except Exception as e:
         st.warning(f"MongoDB unavailable: {e}")
         convs = []
@@ -317,7 +447,7 @@ with st.sidebar:
     st.markdown("<div class='section-label'>Artifacts</div>", unsafe_allow_html=True)
 
     try:
-        artifacts = db.list_artifacts(DEFAULT_USER_ID)
+        artifacts = db.list_artifacts(user_id)
     except Exception as e:
         st.warning(f"MongoDB unavailable: {e}")
         artifacts = []
